@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from math import radians, sin, cos, sqrt, atan2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -63,32 +63,24 @@ def get_calendar_service():
         creds_info,
         scopes=['https://www.googleapis.com/auth/calendar']
     )
-    return build('googleapiclient', 'v1', credentials=creds)
+    return build('calendar', 'v3', credentials=creds)
 
-def add_to_calendar(service, artist, venue, city, date_str, event_url):
+def add_to_calendar(service, artist, venue_name, location_display, date_str, event_url):
     try:
         date = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
         event = {
-            'summary': f'🎵 Concert Alert: {artist} @ {venue}',
-            'location': f'{venue}, {city}',
+            'summary': f'🎵 Concert Alert: {artist} @ {venue_name}',
+            'location': location_display,
             'description': f'Ticket link: {event_url}',
             'start': {'date': str(date)},
             'end': {'date': str(date)},
-            'colorId': '5',  # Yellow in Google Calendar
+            'colorId': '5',
         }
         service.events().insert(calendarId=GOOGLE_CALENDAR_ID, body=event).execute()
         return True
     except Exception as e:
         print(f"Calendar error for {artist}: {e}")
         return False
-
-def get_calendar_service():
-    creds_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-    creds = service_account.Credentials.from_service_account_info(
-        creds_info,
-        scopes=['https://www.googleapis.com/auth/calendar']
-    )
-return build('googleapiclient', 'v1', credentials=creds)
 
 def fetch_events(artist):
     url = f"https://rest.bandsintown.com/artists/{requests.utils.quote(artist)}/events?app_id={APP_ID}"
@@ -115,6 +107,8 @@ def main():
 
     for artist in ARTISTS:
         events = fetch_events(artist)
+        if not isinstance(events, list):
+            continue
         for event in events:
             event_id = event.get('id')
             if not event_id or event_id in seen:
@@ -130,34 +124,4 @@ def main():
             date_str = event.get('datetime', '')
             event_url = event.get('url', '')
 
-            if country != 'United States' and country != 'Canada':
-                continue
-
-            if not lat or not lon:
-                continue
-
-            distance = haversine(BROOKLINE_NH[0], BROOKLINE_NH[1], float(lat), float(lon))
-            if distance > MAX_RADIUS_MILES:
-                continue
-
-            date_display = date_str[:10] if date_str else 'TBD'
-            location_display = f"{city}, {region}"
-
-            added = add_to_calendar(cal_service, artist, venue_name, location_display, date_str, event_url)
-
-            alert = (
-                f"*{artist}*\n"
-                f"📍 {venue_name} — {location_display}\n"
-                f"📅 {date_display}\n"
-                f"📏 {int(distance)} miles away\n"
-                f"🎟 {event_url}"
-            )
-            alerts.append(alert)
-            new_seen.add(event_id)
-
-    save_seen(seen | new_seen)
-    send_slack(alerts)
-    print(f"Done. {len(alerts)} new shows found.")
-
-if __name__ == "__main__":
-    main()
+            if country not in ('United States',
