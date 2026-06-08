@@ -2,7 +2,9 @@ name: Concert Scout
 
 on:
   schedule:
-    - cron: '0 20 * * *'  # Runs nightly at 8PM UTC (4PM EDT)
+    - cron: '0 1 * * 3'   # Tuesday 9PM EDT (1AM UTC Wed)
+    - cron: '0 1 * * 5'   # Thursday 9PM EDT (1AM UTC Fri)
+    - cron: '0 13 * * 6'  # Saturday 8AM EDT (1PM UTC Sat)
   workflow_dispatch:
 
 jobs:
@@ -11,10 +13,10 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
