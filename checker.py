@@ -98,7 +98,7 @@ def main():
 
     for show in all_shows:
         artist = show.get('artist', '')
-        event_url = show.get('url', '')
+        event_url = show.get('url', '').split('?')[0]
         event_id = event_url
 
         if not event_id or event_id in seen:
