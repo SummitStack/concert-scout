@@ -88,7 +88,7 @@ def get_calendar_service():
         creds_info,
         scopes=['https://www.googleapis.com/auth/calendar']
     )
-    return build('googleapiclient', 'calendar', 'v3', credentials=creds)
+return build('googleapiclient', 'v1', credentials=creds)
 
 def fetch_events(artist):
     url = f"https://rest.bandsintown.com/artists/{requests.utils.quote(artist)}/events?app_id={APP_ID}"
