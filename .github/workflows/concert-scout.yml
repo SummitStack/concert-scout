@@ -1,0 +1,37 @@
+name: Concert Scout
+
+on:
+  schedule:
+    - cron: '0 20 * * *'  # Runs nightly at 8PM UTC (4PM EDT)
+  workflow_dispatch:
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests google-auth google-auth-httplib2 google-api-python-client
+
+      - name: Run concert scout
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python checker.py
+
+      - name: Commit seen events
+        run: |
+          git config user.name "concert-scout"
+          git config user.email "actions@github.com"
+          git add seen_events.json
+          git diff --staged --quiet || git commit -m "Update seen events"
+          git push
