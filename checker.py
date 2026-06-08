@@ -124,4 +124,4 @@ def main():
             date_str = event.get('datetime', '')
             event_url = event.get('url', '')
 
-            if country not in ('United States',
+            if country not in ('United States', 'Canada'):
