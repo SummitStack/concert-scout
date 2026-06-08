@@ -15,6 +15,11 @@ WORKER_URL = "https://concert-scout.trekking-higher.workers.dev/"
 BROOKLINE_NH = (42.7329, -71.6578)
 MAX_RADIUS_MILES = 200
 
+EXCLUDED_CITIES = {
+    'New York (NYC)', 'Queens', 'Bronx', 'Brooklyn', 'Manhattan', 'Flushing',
+    'Long Island City', 'Astoria', 'Staten Island'
+}
+
 SEEN_FILE = "seen_events.json"
 
 
@@ -67,9 +72,10 @@ def add_to_calendar(service, artist, venue_name, location_display, date_str, eve
 
 
 def send_slack(messages):
-    if not messages:
-        return
-    text = "*🎵 New Concert Alerts*\n\n" + "\n\n".join(messages)
+    if messages:
+        text = "*🎵 New Concert Alerts*\n\n" + "\n\n".join(messages)
+    else:
+        text = "✅ Concert Scout ran — no new shows found within range."
     requests.post(SLACK_WEBHOOK, json={"text": text})
 
 
@@ -78,7 +84,6 @@ def main():
     new_seen = set()
     alerts = []
 
-    # Fetch all shows from Cloudflare Worker
     print("Fetching shows from Worker...")
     try:
         r = requests.get(WORKER_URL, timeout=60)
@@ -94,7 +99,7 @@ def main():
     for show in all_shows:
         artist = show.get('artist', '')
         event_url = show.get('url', '')
-        event_id = event_url  # use URL as unique ID
+        event_id = event_url
 
         if not event_id or event_id in seen:
             continue
@@ -108,12 +113,15 @@ def main():
         if country not in ('US', 'United States', 'Canada'):
             continue
 
+        city = show.get('city', '')
+        if city in EXCLUDED_CITIES:
+            continue
+
         distance = haversine(BROOKLINE_NH[0], BROOKLINE_NH[1], float(lat), float(lon))
         if distance > MAX_RADIUS_MILES:
             continue
 
         venue_name = show.get('venue', 'Unknown Venue')
-        city = show.get('city', '')
         region = show.get('region', '')
         date_str = show.get('date', '')
         location_display = f"{city}, {region}"
