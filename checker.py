@@ -10,32 +10,10 @@ from googleapiclient.discovery import build
 SLACK_WEBHOOK = os.environ['SLACK_WEBHOOK']
 GOOGLE_CALENDAR_ID = os.environ['GOOGLE_CALENDAR_ID']
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ['GOOGLE_SERVICE_ACCOUNT_JSON']
+WORKER_URL = "https://concert-scout.trekking-higher.workers.dev/"
 
 BROOKLINE_NH = (42.7329, -71.6578)
 MAX_RADIUS_MILES = 200
-APP_ID = "concert-scout"
-
-ARTISTS = [
-    "Gregory Alan Isakov",
-    "Josiah and the Bonnevilles",
-    "Woodlock",
-    "John Craigie",
-    "Ocie Elliott",
-    "John Vincent III",
-    "Richy Mitch & The Coal Miners",
-    "River Whyless",
-    "Mon Rovia",
-    "Monica Heldal",
-    "Caamp",
-    "Sons of the East",
-    "James Bay",
-    "Noah Kahan",
-    "Lord Huron",
-    "The Lumineers",
-    "Mt Joy",
-    "Chance Pena",
-    "Nathaniel Rateliff",
-]
 
 SEEN_FILE = "seen_events.json"
 
@@ -88,17 +66,6 @@ def add_to_calendar(service, artist, venue_name, location_display, date_str, eve
         return False
 
 
-def fetch_events(artist):
-    url = f"https://rest.bandsintown.com/artists/{requests.utils.quote(artist)}/events?app_id={APP_ID}"
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            return r.json()
-    except Exception as e:
-        print(f"Error fetching {artist}: {e}")
-    return []
-
-
 def send_slack(messages):
     if not messages:
         return
@@ -111,51 +78,58 @@ def main():
     new_seen = set()
     alerts = []
 
+    # Fetch all shows from Cloudflare Worker
+    print("Fetching shows from Worker...")
+    try:
+        r = requests.get(WORKER_URL, timeout=60)
+        data = r.json()
+        all_shows = data.get('shows', [])
+        print(f"Worker returned {len(all_shows)} total shows across all artists")
+    except Exception as e:
+        print(f"Worker error: {e}")
+        return
+
     cal_service = get_calendar_service()
 
-    for artist in ARTISTS:
-        events = fetch_events(artist)
-        if not isinstance(events, list):
+    for show in all_shows:
+        artist = show.get('artist', '')
+        event_url = show.get('url', '')
+        event_id = event_url  # use URL as unique ID
+
+        if not event_id or event_id in seen:
             continue
-        for event in events:
-            event_id = event.get('id')
-            if not event_id or event_id in seen:
-                continue
 
-            venue = event.get('venue', {})
-            lat = venue.get('latitude')
-            lon = venue.get('longitude')
-            city = venue.get('city', '')
-            region = venue.get('region', '')
-            country = venue.get('country', '')
-            venue_name = venue.get('name', 'Unknown Venue')
-            date_str = event.get('datetime', '')
-            event_url = event.get('url', '')
+        lat = show.get('lat')
+        lon = show.get('lon')
+        if not lat or not lon:
+            continue
 
-            if country not in ('United States', 'Canada'):
-                continue
+        country = show.get('country', '')
+        if country not in ('US', 'United States', 'Canada'):
+            continue
 
-            if not lat or not lon:
-                continue
+        distance = haversine(BROOKLINE_NH[0], BROOKLINE_NH[1], float(lat), float(lon))
+        if distance > MAX_RADIUS_MILES:
+            continue
 
-            distance = haversine(BROOKLINE_NH[0], BROOKLINE_NH[1], float(lat), float(lon))
-            if distance > MAX_RADIUS_MILES:
-                continue
+        venue_name = show.get('venue', 'Unknown Venue')
+        city = show.get('city', '')
+        region = show.get('region', '')
+        date_str = show.get('date', '')
+        location_display = f"{city}, {region}"
+        date_display = date_str[:10] if date_str else 'TBD'
 
-            date_display = date_str[:10] if date_str else 'TBD'
-            location_display = f"{city}, {region}"
+        add_to_calendar(cal_service, artist, venue_name, location_display, date_str, event_url)
 
-            add_to_calendar(cal_service, artist, venue_name, location_display, date_str, event_url)
-
-            alert = (
-                f"*{artist}*\n"
-                f"📍 {venue_name} — {location_display}\n"
-                f"📅 {date_display}\n"
-                f"📏 {int(distance)} miles away\n"
-                f"🎟 {event_url}"
-            )
-            alerts.append(alert)
-            new_seen.add(event_id)
+        alert = (
+            f"*{artist}*\n"
+            f"📍 {venue_name} — {location_display}\n"
+            f"📅 {date_display}\n"
+            f"📏 {int(distance)} miles away\n"
+            f"🎟 {event_url}"
+        )
+        alerts.append(alert)
+        new_seen.add(event_id)
 
     save_seen(seen | new_seen)
     send_slack(alerts)
